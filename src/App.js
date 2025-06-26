@@ -16,8 +16,17 @@ const App = () => {
   const [currentMa, setCurrentMa] = useState(0);
   const [resistance, setResistance] = useState(0);
   const [colorCode, setColorCode] = useState('');
-  const [bandCount, setBandCount] = useState(3);
+  const [bandCount, setBandCount] = useState(4);
+  const [tolerance, setTolerance] = useState(5); // Default 5% tolerance
   const [graphData, setGraphData] = useState([]);
+
+  // Tolerance options with their corresponding colors
+  const toleranceOptions = [
+    { value: 1, label: '1%', color: 'Brown' },
+    { value: 2, label: '2%', color: 'Red' },
+    { value: 5, label: '5%', color: 'Gold' },
+    { value: 10, label: '10%', color: 'Silver' }
+  ];
 
   // Function to calculate 4-20mA current from process value
   const calculateCurrent = useCallback((value, min, max) => {
@@ -30,15 +39,21 @@ const App = () => {
     return 24 / currentA;             // R = V/I
   }, []);
 
+  // Function to get tolerance color based on tolerance percentage
+  const getToleranceColor = useCallback((tolerancePercent) => {
+    const toleranceOption = toleranceOptions.find(opt => opt.value === tolerancePercent);
+    return toleranceOption ? toleranceOption.color : 'Gold';
+  }, []);
+
   // Function to determine resistor color code based on band count
-  const getResistorColorCode = useCallback((resValue, bands) => {
+  const getResistorColorCode = useCallback((resValue, bands, tolerancePercent) => {
     const colors = ["Black", "Brown", "Red", "Orange", "Yellow", "Green", "Blue", "Violet", "Gray", "White"];
-    const toleranceColor = "Gold"; // default tolerance color
+    const toleranceColor = getToleranceColor(tolerancePercent);
 
     const resistanceRounded = Math.round(resValue);
 
-    if (bands === 3 || bands === 4) {
-      // For 3- and 4-band: use 2 significant digits
+    if (bands === 3) {
+      // For 3-band: use 2 significant digits, no tolerance band
       const digits = resistanceRounded.toString().split('');
       if (digits.length < 2) {
         return "N/A";
@@ -48,11 +63,21 @@ const App = () => {
       let multiplier = digits.length - 2;
       if (multiplier < 0) multiplier = 0;
       const multiplierBand = colors[multiplier];
-      return bands === 3
-        ? `${firstBand}, ${secondBand}, ${multiplierBand}`
-        : `${firstBand}, ${secondBand}, ${multiplierBand}, ${toleranceColor}`;
+      return `${firstBand}, ${secondBand}, ${multiplierBand}`;
+    } else if (bands === 4) {
+      // For 4-band: use 2 significant digits + tolerance
+      const digits = resistanceRounded.toString().split('');
+      if (digits.length < 2) {
+        return "N/A";
+      }
+      const firstBand = colors[parseInt(digits[0])];
+      const secondBand = colors[parseInt(digits[1])];
+      let multiplier = digits.length - 2;
+      if (multiplier < 0) multiplier = 0;
+      const multiplierBand = colors[multiplier];
+      return `${firstBand}, ${secondBand}, ${multiplierBand}, ${toleranceColor}`;
     } else if (bands === 5) {
-      // For 5-band: use 3 significant digits
+      // For 5-band: use 3 significant digits + tolerance
       let digits = resistanceRounded.toString().split('');
       // Pad with zeros if necessary
       while (digits.length < 3) {
@@ -68,7 +93,7 @@ const App = () => {
     } else {
       return "Invalid band count";
     }
-  }, []);
+  }, [getToleranceColor]);
 
   // Generate data for the resistance vs current graph
   const generateGraphData = useCallback(() => {
@@ -90,7 +115,7 @@ const App = () => {
     const res = calculateResistance(current);
     setResistance(res);
 
-    const code = getResistorColorCode(res, bandCount);
+    const code = getResistorColorCode(res, bandCount, tolerance);
     setColorCode(code);
 
     // Generate graph data
@@ -100,6 +125,7 @@ const App = () => {
     pvMin,
     pvMax,
     bandCount,
+    tolerance,
     calculateCurrent,
     calculateResistance,
     getResistorColorCode,
@@ -124,7 +150,8 @@ const App = () => {
       Violet: "bg-purple-600",
       Gray: "bg-gray-500",
       White: "bg-white border border-gray-300",
-      Gold: "bg-yellow-600"
+      Gold: "bg-yellow-600",
+      Silver: "bg-gray-300 border border-gray-400"
     };
     return (
       <div className={`h-12 w-4 rounded-sm mx-1 ${colorMap[color] || "bg-gray-300"}`} />
@@ -227,19 +254,43 @@ const App = () => {
             </div>
           </div>
 
-          <div className="mb-6">
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Resistor Band Count:
-            </label>
-            <select
-              value={bandCount}
-              onChange={(e) => setBandCount(parseInt(e.target.value))}
-              className="w-full p-2 border border-gray-300 rounded"
-            >
-              <option value={3}>3-band</option>
-              <option value={4}>4-band</option>
-              <option value={5}>5-band</option>
-            </select>
+          <div className="grid grid-cols-2 gap-4 mb-6">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Resistor Band Count:
+              </label>
+              <select
+                value={bandCount}
+                onChange={(e) => setBandCount(parseInt(e.target.value))}
+                className="w-full p-2 border border-gray-300 rounded"
+              >
+                <option value={3}>3-band</option>
+                <option value={4}>4-band</option>
+                <option value={5}>5-band</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Tolerance:
+              </label>
+              <select
+                value={tolerance}
+                onChange={(e) => setTolerance(parseInt(e.target.value))}
+                className="w-full p-2 border border-gray-300 rounded"
+                disabled={bandCount === 3}
+              >
+                {toleranceOptions.map(option => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+              {bandCount === 3 && (
+                <p className="text-xs text-gray-500 mt-1">
+                  3-band resistors don't have tolerance bands
+                </p>
+              )}
+            </div>
           </div>
 
           <div className="bg-gray-100 p-4 rounded-lg">
@@ -260,12 +311,28 @@ const App = () => {
               </div>
 
               <div className="text-sm font-medium text-gray-700">
+                Tolerance:
+              </div>
+              <div className="text-sm text-right font-mono">
+                {bandCount === 3 ? 'N/A' : `±${tolerance}%`}
+              </div>
+
+              <div className="text-sm font-medium text-gray-700">
                 Resistor Color Code:
               </div>
               <div className="text-sm text-right font-mono">{colorCode}</div>
             </div>
 
             {renderColorBands()}
+            
+            {bandCount !== 3 && (
+              <div className="mt-3 p-2 bg-blue-50 rounded text-sm">
+                <p className="text-blue-800">
+                  <span className="font-medium">Resistance Range:</span>{' '}
+                  {(resistance * (1 - tolerance/100)).toFixed(2)} Ω to {(resistance * (1 + tolerance/100)).toFixed(2)} Ω
+                </p>
+              </div>
+            )}
           </div>
         </div>
 
